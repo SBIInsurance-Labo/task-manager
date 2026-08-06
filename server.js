@@ -6,12 +6,11 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ミドルウェア設定
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb' }));
 app.use(express.static('public'));
 
-// データベース初期化
 const db = new sqlite3.Database('./tasks.db', (err) => {
   if (err) {
     console.error('Database error:', err.message);
@@ -27,9 +26,12 @@ function initializeDB() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
       description TEXT,
+      file_link TEXT,
       assignee TEXT,
+      reviewer TEXT,
       status TEXT DEFAULT 'not_started',
       priority TEXT DEFAULT 'medium',
+      due_date TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
@@ -43,7 +45,6 @@ function initializeDB() {
     )
   `, (err) => {
     if (!err) {
-      // デフォルトプロジェクトを追加
       db.run(`INSERT OR IGNORE INTO projects (name) VALUES ('Default')`);
     }
   });
@@ -59,7 +60,6 @@ function initializeDB() {
   `);
 }
 
-// === プロジェクトAPI ===
 app.get('/api/projects', (req, res) => {
   db.all('SELECT * FROM projects ORDER BY name', [], (err, rows) => {
     if (err) {
@@ -87,7 +87,6 @@ app.post('/api/projects', (req, res) => {
   );
 });
 
-// === タスクAPI ===
 app.get('/api/tasks', (req, res) => {
   const { project_id } = req.query;
   
@@ -113,15 +112,15 @@ app.get('/api/tasks', (req, res) => {
 });
 
 app.post('/api/tasks', (req, res) => {
-  const { title, description, assignee, project_id } = req.body;
+  const { title, description, file_link, assignee, reviewer, priority, due_date, project_id } = req.body;
 
   if (!title || title.trim() === '') {
     return res.status(400).json({ error: 'Title required' });
   }
 
   db.run(
-    'INSERT INTO tasks (title, description, assignee, status) VALUES (?, ?, ?, ?)',
-    [title, description || '', assignee || '', 'not_started'],
+    'INSERT INTO tasks (title, description, file_link, assignee, reviewer, status, priority, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [title, description || '', file_link || '', assignee || '', reviewer || '', 'not_started', priority || 'medium', due_date || null],
     function(err) {
       if (err) {
         return res.status(500).json({ error: err.message });
@@ -137,7 +136,18 @@ app.post('/api/tasks', (req, res) => {
           if (err) {
             return res.status(500).json({ error: err.message });
           }
-          res.json({ id: taskId, title, description, assignee, status: 'not_started', project_id: projId });
+          res.json({ 
+            id: taskId, 
+            title, 
+            description, 
+            file_link,
+            assignee, 
+            reviewer,
+            status: 'not_started', 
+            priority: priority || 'medium',
+            due_date: due_date || null,
+            project_id: projId 
+          });
         }
       );
     }
@@ -146,7 +156,7 @@ app.post('/api/tasks', (req, res) => {
 
 app.patch('/api/tasks/:id', (req, res) => {
   const { id } = req.params;
-  const { title, description, assignee, status, priority } = req.body;
+  const { title, description, file_link, assignee, reviewer, status, priority, due_date } = req.body;
 
   let updates = [];
   let params = [];
@@ -159,49 +169,12 @@ app.patch('/api/tasks/:id', (req, res) => {
     updates.push('description = ?');
     params.push(description);
   }
+  if (file_link !== undefined) {
+    updates.push('file_link = ?');
+    params.push(file_link);
+  }
   if (assignee !== undefined) {
     updates.push('assignee = ?');
     params.push(assignee);
   }
-  if (status !== undefined) {
-    updates.push('status = ?');
-    params.push(status);
-  }
-  if (priority !== undefined) {
-    updates.push('priority = ?');
-    params.push(priority);
-  }
-
-  updates.push('updated_at = CURRENT_TIMESTAMP');
-  params.push(id);
-
-  const query = `UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`;
-
-  db.run(query, params, (err) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-    res.json({ success: true });
-  });
-});
-
-app.delete('/api/tasks/:id', (req, res) => {
-  const { id } = req.params;
-
-  db.run('DELETE FROM tasks WHERE id = ?', [id], (err) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-    res.json({ success: true });
-  });
-});
-
-// エラーハンドリング
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+  if (reviewer !== undefined) {
