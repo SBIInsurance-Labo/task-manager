@@ -146,35 +146,3 @@ app.post('/api/tasks', (req, res) => {
             status: 'not_started', 
             priority: priority || 'medium',
             due_date: due_date || null,
-            project_id: projId 
-          });
-        }
-      );
-    }
-  );
-});
-
-app.patch('/api/tasks/:id', (req, res) => {
-  const { id } = req.params;
-  const { title, description, file_link, assignee, reviewer, status, priority, due_date } = req.body;
-
-  let updates = [];
-  let params = [];
-
-  if (title !== undefined) {
-    updates.push('title = ?');
-    params.push(title);
-  }
-  if (description !== undefined) {
-    updates.push('description = ?');
-    params.push(description);
-  }
-  if (file_link !== undefined) {
-    updates.push('file_link = ?');
-    params.push(file_link);
-  }
-  if (assignee !== undefined) {
-    updates.push('assignee = ?');
-    params.push(assignee);
-  }
-  if (reviewer !== undefined) {
