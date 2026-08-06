@@ -11,6 +11,19 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb' }));
 app.use(express.static('public'));
 
+// パスワード認証
+const APP_PASSWORD = process.env.APP_PASSWORD || 'task2024';
+
+app.post('/api/login', (req, res) => {
+  const { password } = req.body;
+  
+  if (password === APP_PASSWORD) {
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ success: false, error: 'Invalid password' });
+  }
+});
+
 const db = new sqlite3.Database('./tasks.db', (err) => {
   if (err) {
     console.error('Database error:', err.message);
