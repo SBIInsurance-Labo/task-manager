@@ -348,6 +348,15 @@
   </style>
 </head>
 <body>
+  <div id="loginPanel" class="login-panel">
+  <div class="login-box">
+    <h2>🔐 タスク管理ツール</h2>
+    <p>パスワードを入力してください</p>
+    <input type="password" id="passwordInput" placeholder="パスワード" autofocus>
+    <button onclick="login()">ログイン</button>
+    <p id="loginError" style="color: red; display: none; margin-top: 10px;"></p>
+  </div>
+</div>
   <div class="container">
     <header>
       <h1>📋 タスク管理ツール</h1>
