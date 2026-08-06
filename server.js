@@ -146,3 +146,83 @@ app.post('/api/tasks', (req, res) => {
             status: 'not_started', 
             priority: priority || 'medium',
             due_date: due_date || null,
+            project_id: projId 
+          });
+        }
+      );
+    }
+  );
+});
+
+app.patch('/api/tasks/:id', (req, res) => {
+  const { id } = req.params;
+  const { title, description, file_link, assignee, reviewer, status, priority, due_date } = req.body;
+
+  let updates = [];
+  let params = [];
+
+  if (title !== undefined) {
+    updates.push('title = ?');
+    params.push(title);
+  }
+  if (description !== undefined) {
+    updates.push('description = ?');
+    params.push(description);
+  }
+  if (file_link !== undefined) {
+    updates.push('file_link = ?');
+    params.push(file_link);
+  }
+  if (assignee !== undefined) {
+    updates.push('assignee = ?');
+    params.push(assignee);
+  }
+  if (reviewer !== undefined) {
+    updates.push('reviewer = ?');
+    params.push(reviewer);
+  }
+  if (status !== undefined) {
+    updates.push('status = ?');
+    params.push(status);
+  }
+  if (priority !== undefined) {
+    updates.push('priority = ?');
+    params.push(priority);
+  }
+  if (due_date !== undefined) {
+    updates.push('due_date = ?');
+    params.push(due_date);
+  }
+
+  updates.push('updated_at = CURRENT_TIMESTAMP');
+  params.push(id);
+
+  const query = `UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`;
+
+  db.run(query, params, (err) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ success: true });
+  });
+});
+
+app.delete('/api/tasks/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.run('DELETE FROM tasks WHERE id = ?', [id], (err) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ success: true });
+  });
+});
+
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
