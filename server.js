@@ -1,0 +1,207 @@
+const express = require('express');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+const cors = require('cors');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ミドルウェア設定
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public'));
+
+// データベース初期化
+const db = new sqlite3.Database('./tasks.db', (err) => {
+  if (err) {
+    console.error('Database error:', err.message);
+  } else {
+    console.log('Connected to SQLite database');
+    initializeDB();
+  }
+});
+
+function initializeDB() {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      assignee TEXT,
+      status TEXT DEFAULT 'not_started',
+      priority TEXT DEFAULT 'medium',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `, (err) => {
+    if (!err) {
+      // デフォルトプロジェクトを追加
+      db.run(`INSERT OR IGNORE INTO projects (name) VALUES ('Default')`);
+    }
+  });
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS task_projects (
+      task_id INTEGER,
+      project_id INTEGER,
+      PRIMARY KEY (task_id, project_id),
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    )
+  `);
+}
+
+// === プロジェクトAPI ===
+app.get('/api/projects', (req, res) => {
+  db.all('SELECT * FROM projects ORDER BY name', [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(rows);
+  });
+});
+
+app.post('/api/projects', (req, res) => {
+  const { name } = req.body;
+  if (!name || name.trim() === '') {
+    return res.status(400).json({ error: 'Project name required' });
+  }
+
+  db.run(
+    'INSERT INTO projects (name) VALUES (?)',
+    [name],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      res.json({ id: this.lastID, name });
+    }
+  );
+});
+
+// === タスクAPI ===
+app.get('/api/tasks', (req, res) => {
+  const { project_id } = req.query;
+  
+  let query = `
+    SELECT DISTINCT t.* FROM tasks t
+    LEFT JOIN task_projects tp ON t.id = tp.task_id
+  `;
+  let params = [];
+
+  if (project_id) {
+    query += ` WHERE tp.project_id = ?`;
+    params.push(project_id);
+  }
+
+  query += ` ORDER BY t.created_at DESC`;
+
+  db.all(query, params, (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(rows);
+  });
+});
+
+app.post('/api/tasks', (req, res) => {
+  const { title, description, assignee, project_id } = req.body;
+
+  if (!title || title.trim() === '') {
+    return res.status(400).json({ error: 'Title required' });
+  }
+
+  db.run(
+    'INSERT INTO tasks (title, description, assignee, status) VALUES (?, ?, ?, ?)',
+    [title, description || '', assignee || '', 'not_started'],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+
+      const taskId = this.lastID;
+      const projId = project_id || 1;
+
+      db.run(
+        'INSERT INTO task_projects (task_id, project_id) VALUES (?, ?)',
+        [taskId, projId],
+        (err) => {
+          if (err) {
+            return res.status(500).json({ error: err.message });
+          }
+          res.json({ id: taskId, title, description, assignee, status: 'not_started', project_id: projId });
+        }
+      );
+    }
+  );
+});
+
+app.patch('/api/tasks/:id', (req, res) => {
+  const { id } = req.params;
+  const { title, description, assignee, status, priority } = req.body;
+
+  let updates = [];
+  let params = [];
+
+  if (title !== undefined) {
+    updates.push('title = ?');
+    params.push(title);
+  }
+  if (description !== undefined) {
+    updates.push('description = ?');
+    params.push(description);
+  }
+  if (assignee !== undefined) {
+    updates.push('assignee = ?');
+    params.push(assignee);
+  }
+  if (status !== undefined) {
+    updates.push('status = ?');
+    params.push(status);
+  }
+  if (priority !== undefined) {
+    updates.push('priority = ?');
+    params.push(priority);
+  }
+
+  updates.push('updated_at = CURRENT_TIMESTAMP');
+  params.push(id);
+
+  const query = `UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`;
+
+  db.run(query, params, (err) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ success: true });
+  });
+});
+
+app.delete('/api/tasks/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.run('DELETE FROM tasks WHERE id = ?', [id], (err) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ success: true });
+  });
+});
+
+// エラーハンドリング
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
